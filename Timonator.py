@@ -58,9 +58,10 @@ def create_excel_format():
     global global_df
     root = tk.Tk()
     root.withdraw()
+    excel_name = global_file_name.split('/')[-1]
     global_df.to_csv(filedialog.asksaveasfilename(defaultextension='.csv',
                                                   title='EXCEL_Timon', filetypes=[('csv files', '*.csv')],
-                                                  initialfile=f'EXCEL_{global_file_name}'))
+                                                  initialfile=f'EXCEL_{excel_name}'))
     root.destroy()
 
 
@@ -90,27 +91,40 @@ def save_individual_plots_to_png(list_of_cols, df, remove_time_columns=True, fol
     Removes time/date columns from the list by default.
     Iterates over the columns to
     """
-    os.mkdir(folder_name)
+    try:
+        os.mkdir(folder_name)
+    except FileExistsError:
+        print(f'Directory {folder_name} exists')
+
     if remove_time_columns:
         for col in list_of_cols:
             if col in ['PLC_TIME(Timedate48)', 'Time Date', 'TIME', 'PLC_TIME_CV(Enum2)']:
+                print(f'removing {col}')
                 list_of_cols.remove(col)
 
     for col in tqdm(list_of_cols):
         if col == 'PLC_MASTER_COACH(Unsigned16)':
             df[col].plot(figsize=(16, 4), legend=True, ylim=(15000, 15011))
-            plt.savefig(folder_name, dpi=300, facecolor='w', edgecolor='w', orientation='landscape', format=None,
-                        transparent=False, pad_inches=0.1)
+            plt.savefig(f'{folder_name}/{col}.png', dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
+                        format=None, transparent=False, pad_inches=0.1)
             plt.close()
         elif col in ['Formation_OK', 'PLC_InauFinished', 'Degraded_Mode', 'DoorSideA', 'DoorSideB',
                      'HMI_CONFIRM_CMD(Boolean1)', 'HMI_RECALCULATE_CMD(Boolean1)'] or 'Boolean' in col:
             df[col].plot(figsize=(16, 4), legend=True, ylim=(0, 1))
-            plt.savefig(folder_name, dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
+            plt.savefig(f'{folder_name}/{col}.png', dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
                         format=None, transparent=False, pad_inches=0.1)
             plt.close()
+        elif col == 'PLC_TIME_CV(Enum2)':
+            pass
+        elif col == 'PLC_TIME(Timedate48)':
+            pass
+        elif col == 'Time Date':
+            pass
+        elif col == 'TIME':
+            pass
         else:
             df[col].plot(figsize=(16, 4), legend=True)
-            plt.savefig(folder_name, dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
+            plt.savefig(f'{folder_name}/{col}.png', dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
                         format=None, transparent=False, pad_inches=0.1)
             plt.close()
 
@@ -131,7 +145,11 @@ def lifeword_plot(df: pd.DataFrame, file_name: str, lifeword: str):
 
 
 def single_variable(df):
-    choice = input('Type a variable to inspect: ')
+    os.system('cls')
+    for col in df.columns:
+        print(col)
+
+    choice = input('\nType a variable to inspect: ')
     try:
         df[choice].plot(figsize=(16, 8), legend=True, xlabel='Time Date', title=choice)
         plt.show()
@@ -231,7 +249,8 @@ def main():
     elif choice == 7:
         single_variable(global_df)
     elif choice == 8:
-        save_individual_plots_to_png(list_of_cols=global_df.columns, df=global_df)
+        current_list_of_cols = list(global_df.columns)
+        save_individual_plots_to_png(list_of_cols=current_list_of_cols, df=global_df)
     elif choice == 9:
         create_excel_format()
     else:
@@ -244,7 +263,7 @@ def main():
 |_   _|(_) _ __ ___    ___   _ __    __ _ | |_   ___   _ __
   | |  | || '_ ` _ \  / _ \ | '_ \  / _` || __| / _ \ | '__|
   | |  | || | | | | || (_) || | | || (_| || |_ | (_) || |
-  |_|  |_||_| |_| |_| \___/ |_| |_| \__,_| \__| \___/ |_| V1.0 alpha
+  |_|  |_||_| |_| |_| \___/ |_| |_| \__,_| \__| \___/ |_| V1.0 beta
                            ______
                          <((((((\\\\\\
                          /      . }\\
