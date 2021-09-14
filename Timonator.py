@@ -12,6 +12,10 @@ global_df = pd.DataFrame()
 
 
 def set_timon_log_filename():
+    """
+    Prompts the user to select a timon log file.
+    Note that this must be a raw timon log file generated from the timon_embedded.xml file.
+    """
     global global_file_name
     root = tk.Tk()
     root.withdraw()
@@ -26,6 +30,12 @@ def set_global_df(df):
 
 
 def read_and_clean_timon_log():
+    """
+    Reads in the data from the pre selected timon log file. Some minor character changes made to help with
+    data types later on down the track.
+    Pre-condition: global_file_name contains a file name.
+    Return: pd.DataFrame object
+    """
     global global_file_name
     df = pd.read_csv(global_file_name, sep=';')
     df.replace(',','.', regex=True, inplace=True)
@@ -35,13 +45,36 @@ def read_and_clean_timon_log():
 
 
 def set_start_date_var():
+    """
+    Updates the start_date variable using the name of the timon file.
+    By default the timon log will name the timon log file using the time
+    and date from the TCMS HMI. If there is no PLC_TIME variable recorded,
+    start_date will be used in conjunction with the TIME (seconds since
+    start of recording) to make a time date index.
+    """
     global start_date
     date_list = [int(i) for i in global_file_name.split('.')[0].split('_')]
     start_date = datetime(date_list[0], date_list[1], date_list[2], date_list[3], date_list[4], date_list[5])
     print(f'Set start_date var to: {start_date}')
 
 
+def get_mvb_list():
+    """
+    Prompts the user to identify the MVB list of type xlsx.
+    """
+    root = tk.Tk()
+    root.withdraw()
+    print('Select the E39_CALEDONIAN_MVB_Seated.xlsx Document: ')
+    mvb_file_name = filedialog.askopenfilename(title='Select E39_CALEDONIAN_MVB_Seated.xlsx Document')
+    root.destroy()
+    return mvb_file_name
+
+
 def create_datetime_column():
+    """
+    Creates a index based on a Date Time column. This column is either created from
+    a unix time stamp or calculated using the seconds since start of recording [TIME] column.
+    """
     global start_date
     global global_df
     if 'PLC_TIME(Timedate48)' in global_df.columns and 'PLC_TIME_CV(Enum2)' in global_df.columns:
@@ -54,6 +87,11 @@ def create_datetime_column():
 
 
 def create_excel_format():
+    """
+    Prompts the user to enter a location to save an Excel friendly version of the timon
+    csv log. This file will include dates in a human readable format as opposed to the
+    standard timon TIME in seconds or UNIX seconds.
+    """
     global global_file_name
     global global_df
     root = tk.Tk()
@@ -66,6 +104,10 @@ def create_excel_format():
 
 
 def convert_bitsets_to_int():
+    """
+    Inspects the column headings and checks for the bitset data and
+    converts the hexadecimal data to decimal.
+    """
     global global_df
     for col in global_df.columns:
         if 'Bitset' in col and global_df[col].dtypes == 'object':
@@ -74,12 +116,18 @@ def convert_bitsets_to_int():
 
 def add_bitset_sub_columns(df):
     if 'ASDO_StsW(Bitset16)' in df.columns:
-        df['Formation_OK'] = df['ASDO_StsW(Bitset16)'].apply(lambda x: Formation_OK(x))
+        df['ASDO_Formation_OK'] = df['ASDO_StsW(Bitset16)'].apply(lambda x: ASDO_Formation_OK(x))
     if 'PLC_EVR_BS1(Bitset8)' in df.columns:
+        df['PLCNullSpeed'] = df['PLC_EVR_BS1(Bitset8)'].apply(lambda x: PLCNullSpeed(x))
         df['PLC_InauFinished'] = df['PLC_EVR_BS1(Bitset8)'].apply(lambda x: PLC_InauFinished(x))
+        df['ASDO_Overrided'] = df['PLC_EVR_BS1(Bitset8)'].apply(lambda x: ASDO_Overrided(x))
+        df['TimeSync'] = df['PLC_EVR_BS1(Bitset8)'].apply(lambda x: TimeSync(x))
     if 'HMI_SCREEN(Unsigned8)' in df.columns:
         df['Degraded_Mode'] = df['HMI_SCREEN(Unsigned8)'].apply(lambda x: degraded(x))
     if 'PLC_PIS_CMD1(Bitset8)' in df.columns:
+        df['LocoConnected'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: LocoConnected(x))
+        df['Power_Off'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: Power_Off(x))
+        df['ZeroSpeed'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: ZeroSpeed(x))
         df['DoorSideA'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: DoorSideA(x))
         df['DoorSideB'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: DoorSideB(x))
     return df
@@ -98,29 +146,30 @@ def save_individual_plots_to_png(list_of_cols, df, remove_time_columns=True, fol
 
     if remove_time_columns:
         for col in list_of_cols:
-            if col in ['PLC_TIME(Timedate48)', 'Time Date', 'TIME', 'PLC_TIME_CV(Enum2)']:
+            if 'TIME' in col:
                 print(f'removing {col}')
                 list_of_cols.remove(col)
 
     for col in tqdm(list_of_cols):
         if col == 'PLC_MASTER_COACH(Unsigned16)':
-            df[col].plot(figsize=(16, 4), legend=True, ylim=(15000, 15011))
+            df[col].plot(figsize=(16, 4), legend=True, ylim=(15001, 15011), linewidth=6)
             plt.savefig(f'{folder_name}/{col}.png', dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
                         format=None, transparent=False, pad_inches=0.1)
             plt.close()
-        elif col in ['Formation_OK', 'PLC_InauFinished', 'Degraded_Mode', 'DoorSideA', 'DoorSideB',
-                     'HMI_CONFIRM_CMD(Boolean1)', 'HMI_RECALCULATE_CMD(Boolean1)'] or 'Boolean' in col:
-            df[col].plot(figsize=(16, 4), legend=True, ylim=(0, 1))
+        elif col in ['ASDO_Formation_OK', 'PLC_InauFinished', 'Degraded_Mode', 'DoorSideA', 'DoorSideB',
+                     'HMI_CONFIRM_CMD(Boolean1)', 'HMI_RECALCULATE_CMD(Boolean1)', 'ZeroSpeed', 'PLCNullSpeed',
+                     'TimeSync', 'Power_Off', 'PLC_LeadingDir(Unsigned8)', 'LocoConnected', 'ASDO_Overrided'] \
+                or 'Boolean' in col:
+            df[col].plot(figsize=(16, 4), legend=True, ylim=(0, 1), linewidth=10)
             plt.savefig(f'{folder_name}/{col}.png', dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
                         format=None, transparent=False, pad_inches=0.1)
             plt.close()
-        elif col == 'PLC_TIME_CV(Enum2)':
-            pass
-        elif col == 'PLC_TIME(Timedate48)':
-            pass
-        elif col == 'Time Date':
-            pass
-        elif col == 'TIME':
+        elif 'Enum2' in col:
+            df[col].plot(figsize=(16, 4), legend=True, ylim=(0, 3), linewidth=6)
+            plt.savefig(f'{folder_name}/{col}.png', dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
+                        format=None, transparent=False, pad_inches=0.1)
+            plt.close()
+        elif 'TIME' in col:
             pass
         else:
             df[col].plot(figsize=(16, 4), legend=True)
@@ -130,6 +179,9 @@ def save_individual_plots_to_png(list_of_cols, df, remove_time_columns=True, fol
 
 
 def lifeword_plot(df: pd.DataFrame, file_name: str, lifeword: str):
+    """
+    Magic code to be removed.
+    """
     lw_search_list = lifeword.split('-')
     lw_list = []
     for search_word in lw_search_list:
@@ -145,6 +197,12 @@ def lifeword_plot(df: pd.DataFrame, file_name: str, lifeword: str):
 
 
 def single_variable(df):
+    """
+    Spits out a list of variables from the main Pandas Data Frame containing
+    all of the TiMon log data. This is list of the headings from the data frame
+    and one of these variables can be used for interrogation.
+    The user is be prompted to enter one of these variables to inspect.
+    """
     os.system('cls')
     for col in df.columns:
         print(col)
@@ -158,18 +216,60 @@ def single_variable(df):
         time.sleep(3)
 
 
-def Formation_OK(cell):
+def make_bitset_df():
+    """
+    Creates and returns a Pandas Data Frame with the bitset data.
+    This will call the get_mvb_list function which will prompt the user
+    to identify an appropriate MVB list of type xlsx.
+    """
+    mvb_list = get_mvb_list()
+    cols = ['VarId', 'VarType', 'Comment0', 'Comment1']
+    bitsetdf = pd.read_excel(mvb_list, sheet_name='Variables', header=0, usecols=cols)
+    bitsetdf['VarId'].ffill(inplace=True)
+    bitsetdf['VarType'].ffill(inplace=True)
+    bitsetdf = bitsetdf.dropna(how='all')
+    bitsetdf = bitsetdf[bitsetdf.VarType.str.contains('BITSET', case=True)]
+    # Get indexes where name column doesn't have value john
+    indexNames = bitsetdf[(bitsetdf['Comment0'] == 'Bits')].index
+    # Delete these row indexes from dataFrame
+    bitsetdf.drop(indexNames, inplace=True)
+    bitsetdf.reset_index(inplace=True)
+    return bitsetdf
+
+
+def ASDO_Formation_OK(cell):
     """
     Converts cell into binary bits. Returns the selected bit related to ASDO Formation data.
     """
-    return int(f'{int(cell):016b}'[0])
+    return int(f'{int(cell):016b}'[-1])
+
+
+def PLCNullSpeed(cell):
+    """
+    Converts cell into binary bits. Returns the selected bit related to inauguration data.
+    """
+    return int(f'{int(cell):08b}'[0])
 
 
 def PLC_InauFinished(cell):
     """
     Converts cell into binary bits. Returns the selected bit related to inauguration data.
     """
-    return int(f'{int(cell):08b}'[3])
+    return int(f'{int(cell):08b}'[4])
+
+
+def ASDO_Overrided(cell):
+    """
+    Converts cell into binary bits. Returns the selected bit related to inauguration data.
+    """
+    return int(f'{int(cell):08b}'[6])
+
+
+def TimeSync(cell):
+    """
+    Converts cell into binary bits. Returns the selected bit related to inauguration data.
+    """
+    return int(f'{int(cell):08b}'[7])
 
 
 def degraded(cell):
@@ -182,28 +282,42 @@ def LocoConnected(cell):
     """
     Converts cell into binary bits. Returns the selected bit related to loco data.
     """
-    return int(f'{int(cell):08b}'[-1])
+    return int(f'{int(cell):08b}'[0])
 
 
 def ClosedFormation(cell):
     """
     Converts cell into binary bits. Returns the selected bit related to closed formation data.
     """
-    return int(f'{int(cell):08b}'[-2])
+    return int(f'{int(cell):08b}'[1])
+
+
+def Power_Off(cell):
+    """
+    Converts cell into binary bits. Returns the selected bit related to closed formation data.
+    """
+    return int(f'{int(cell):08b}'[3])
+
+
+def ZeroSpeed(cell):
+    """
+    Converts cell into binary bits. Returns the selected bit related to closed formation data.
+    """
+    return int(f'{int(cell):08b}'[5])
 
 
 def DoorSideA(cell):
     """
     Converts cell into binary bits. Returns the selected bit related to Door side A data.
     """
-    return int(f'{int(cell):08b}'[1])
+    return int(f'{int(cell):08b}'[6])
 
 
 def DoorSideB(cell):
     """
     Converts cell into binary bits. Returns the selected bit related to Door side B data.
     """
-    return int(f'{int(cell):08b}'[0])
+    return int(f'{int(cell):08b}'[7])
 
 
 def print_group():
