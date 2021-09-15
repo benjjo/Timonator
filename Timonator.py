@@ -64,14 +64,14 @@ def set_start_date_var():
 
 def set_mvb_dictionary():
     """
-    Looks for a file in the working directory called 'mvb_list.dic'. Failing that the
+    Looks for a file in the working directory called 'mvb_list.ben'. Failing that the
     function will prompt the user to continue to search for a file locally.
     Once located, the global dictionary is updated with the contents of the file.
     """
     global mvb_dictionary
     global list_of_bitsets
     try:
-        mvb_dictionary = eval(open('mvb_list.dic', 'r').read())
+        mvb_dictionary = eval(open('mvb_list.ben', 'r').read())
     except FileNotFoundError:
         print('MVB List not present in working directory.')
         choice = input('Do you wish to create one? [Y to continue]')
@@ -141,33 +141,28 @@ def convert_bitsets_to_int():
 
 def add_bitset_sub_columns(df, mega_mvb_dic, bitset):
     """
-
+    Adds the individual bitset sub-columns to the df.
+    If they are a bitset value, they will be plotted.
 
     :return: pd.DataFrame() object
     """
+    global folder_name
     if bitset in df.columns:
-        for bitset_sub_col in mega_mvb_dic[bitset]:
-            bit = mega_mvb_dic[bitset][bitset_sub_col]
-            df[bitset_sub_col] = df[mega_mvb_dic[bitset]].apply(lambda x: get_bitset_value(x, bit))
+        bitset = bitset.split('(')[0]
+        if bitset in mega_mvb_dic:
+            for bitset_sub_col in mega_mvb_dic[bitset]:
+                bit = mega_mvb_dic[bitset][bitset_sub_col]
+                print('\n :::: ' + df[bitset_sub_col] + ' ::::\n')
+                df[bitset_sub_col] = df[mega_mvb_dic[bitset]].apply(lambda x: get_bitset_value(x, bit))
+
+
+            df[bitset].plot(figsize=(16, 4), legend=True, ylim=(0, 1), linewidth=4)
+            plt.savefig(f'{folder_name}/{bitset}.png', dpi=300, facecolor='w', edgecolor='w',
+                        orientation='landscape', format=None, transparent=False, pad_inches=0.1)
     else:
-        print('Something went terribly wrong. Perhaps the mvb_list.dic is empty.')
+        print('Something went terribly wrong. Perhaps the mvb_list.ben is empty.')
         abort_protocol()
 
-    # if 'ASDO_StsW(Bitset16)' in df.columns:
-    #     df['ASDO_Formation_OK'] = df['ASDO_StsW(Bitset16)'].apply(lambda x: ASDO_Formation_OK(x))
-    # if 'PLC_EVR_BS1(Bitset8)' in df.columns:
-    #     df['PLCNullSpeed'] = df['PLC_EVR_BS1(Bitset8)'].apply(lambda x: PLCNullSpeed(x))
-    #     df['PLC_InauFinished'] = df['PLC_EVR_BS1(Bitset8)'].apply(lambda x: PLC_InauFinished(x))
-    #     df['ASDO_Overrided'] = df['PLC_EVR_BS1(Bitset8)'].apply(lambda x: ASDO_Overrided(x))
-    #     df['TimeSync'] = df['PLC_EVR_BS1(Bitset8)'].apply(lambda x: TimeSync(x))
-    # if 'HMI_SCREEN(Unsigned8)' in df.columns:
-    #     df['Degraded_Mode'] = df['HMI_SCREEN(Unsigned8)'].apply(lambda x: degraded(x))
-    # if 'PLC_PIS_CMD1(Bitset8)' in df.columns:
-    #     df['LocoConnected'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: LocoConnected(x))
-    #     df['Power_Off'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: Power_Off(x))
-    #     df['ZeroSpeed'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: ZeroSpeed(x))
-    #     df['DoorSideA'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: DoorSideA(x))
-    #     df['DoorSideB'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: DoorSideB(x))
     return df
 
 
@@ -194,6 +189,8 @@ def save_individual_plots_to_png(list_of_cols, df, remove_time_columns=True):
     Iterates over the columns to find the variables to be displayed.
     """
     global folder_name
+    global mvb_dictionary
+    set_mvb_dictionary()
 
     if not os.path.exists(folder_name):
         make_local_plots_directory()
@@ -206,20 +203,20 @@ def save_individual_plots_to_png(list_of_cols, df, remove_time_columns=True):
 
     for col in tqdm(list_of_cols):
         if col == 'PLC_MASTER_COACH(Unsigned16)':
-            df[col].plot(figsize=(16, 4), legend=True, ylim=(15001, 15011), linewidth=6)
+            df[col].plot(figsize=(16, 4), legend=True, ylim=(15001, 15011), linewidth=5)
             plt.savefig(f'{folder_name}/{col}.png', dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
                         format=None, transparent=False, pad_inches=0.1)
             plt.close()
-        elif col in ['ASDO_Formation_OK', 'PLC_InauFinished', 'Degraded_Mode', 'DoorSideA', 'DoorSideB',
-                     'HMI_CONFIRM_CMD(Boolean1)', 'HMI_RECALCULATE_CMD(Boolean1)', 'ZeroSpeed', 'PLCNullSpeed',
-                     'TimeSync', 'Power_Off', 'PLC_LeadingDir(Unsigned8)', 'LocoConnected', 'ASDO_Overrided'] \
-                or 'Boolean' in col:
-            df[col].plot(figsize=(16, 4), legend=True, ylim=(0, 1), linewidth=10)
+        elif 'Boolean' in col:
+            df[col].plot(figsize=(16, 4), legend=True, ylim=(0, 1), linewidth=4)
             plt.savefig(f'{folder_name}/{col}.png', dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
                         format=None, transparent=False, pad_inches=0.1)
+            plt.close()
+        elif 'Bitset' in col and col.split('(')[0] in mvb_dictionary:
+            plot_bitsets(df, mvb_dictionary, col)
             plt.close()
         elif 'Enum2' in col:
-            df[col].plot(figsize=(16, 4), legend=True, ylim=(0, 3), linewidth=6)
+            df[col].plot(figsize=(16, 4), legend=True, ylim=(0, 3), linewidth=4)
             plt.savefig(f'{folder_name}/{col}.png', dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
                         format=None, transparent=False, pad_inches=0.1)
             plt.close()
@@ -230,6 +227,24 @@ def save_individual_plots_to_png(list_of_cols, df, remove_time_columns=True):
             plt.savefig(f'{folder_name}/{col}.png', dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
                         format=None, transparent=False, pad_inches=0.1)
             plt.close()
+
+
+def plot_bitsets(df, mvb_dic, key):
+    global folder_name
+    sub_key = key.split('(')[0]
+    if sub_key in mvb_dic and key in str(df.columns):
+        for col in mvb_dic[sub_key]:
+            new_col = f'{sub_key}_{col}'
+            df[new_col] = df[key].apply(lambda x: get_bitset_value(x, mvb_dic[sub_key][col]))
+            df[new_col].plot(figsize=(16, 4), legend=True, ylim=(0, 1), linewidth=4)
+            if 'reserve' not in col:
+                counter = 0
+                while os.path.exists(f'{folder_name}\\{new_col}'):
+                    col = f'{new_col}{str(counter)}'
+                    counter += 1
+                plt.savefig(f'{folder_name}/{new_col}.png', dpi=300, facecolor='w', edgecolor='w',
+                            orientation='landscape', format=None, transparent=False, pad_inches=0.1)
+                plt.close()
 
 
 def lifeword_plot(df: pd.DataFrame, file_name: str, lifeword: str):
@@ -329,60 +344,60 @@ def make_bitset_df():
     return bitsetdf
 
 
-def map_bitrange_to_value(bitset_variable, bitsetdf):
+def map_bitrange_to_value(bitset_variable, bit_df):
     """
-    Maps the bitset range of bits to the associated variable name. i.e. {0:'Bit Id'}
+    Maps the bitset range of bits to the associated variable name. i.e. {'Bit 1':0, 'Bit 2':1}
 
     :return: dictionary
     """
     bitset_dic = {}
-    for row_num in bitsetdf.loc[bitsetdf['VarId'] == bitset_variable, 'Comment0'].index:
-        bitset_dic[bitsetdf.loc[bitsetdf.index[row_num], 'Comment1']] = bitsetdf.loc[bitsetdf.index[row_num], 'Comment0']
+    for row_num in bit_df.loc[bit_df['VarId'] == bitset_variable, 'Comment0'].index:
+        bitset_dic[bit_df.loc[bit_df.index[row_num], 'Comment1']] = bit_df.loc[bit_df.index[row_num], 'Comment0']
     return bitset_dic
 
 
-def set_list_of_bitsets(bitsetdf):
+def set_list_of_bitsets(bit_df):
     """
-    Returns the unique id set of bitsets.
+    Sets the unique id set of bitsets to the global var.
     """
     global list_of_bitsets
-    list_of_bitsets = bitsetdf['VarId'].unique()
+    list_of_bitsets = bit_df['VarId'].unique()
 
 
-def dic_of_bitsets_to_bitrange(bitset_list, bitsetdf):
+def dic_of_all_bitsets_to_bitrange(bitset_list, bit_df):
     """
-    Maps the bitset dictionary to a Var ID. i.e. {Var ID: {0:'Bit Id', 1:'Bit Id'}}
+    Maps the bitset dictionary to a Var ID. i.e. {'Var 1': {'Bit 1':0, 'Bit 2':1}, 'Var 2': {'Bit 1':0, 'Bit 2':1}}
 
     :return: dictionary
     """
     mvb_dict = {}
     for bitset in bitset_list:
-        mvb_dict[bitset] = map_bitrange_to_value(bitset, bitsetdf)
+        mvb_dict[bitset] = map_bitrange_to_value(bitset, bit_df)
     return mvb_dict
 
 
-def update_mvb_dictionary(bitset_list, bitsetdf):
+def update_mvb_dictionary(bitset_list, bit_df):
     """
     Requests the user to input a new list of MVB data from a file of type xlsx.
     """
     global list_of_bitsets
     root = tk.Tk()
     root.withdraw()
-    file_out = filedialog.asksaveasfilename(defaultextension='.dic',
-                                            title='Update MVB list', filetypes=[('dic files', '*.dic')],
-                                            initialfile='mvb_list.dic')
+    file_out = filedialog.asksaveasfilename(defaultextension='.ben',
+                                            title='Update MVB list', filetypes=[('Benjo files', '*.ben')],
+                                            initialfile='mvb_list.ben')
     root.destroy()
     print('Please wait. This may take a minute or two...')
 
     if not bitset_list:
-        set_list_of_bitsets(bitsetdf)
+        set_list_of_bitsets(bit_df)
         bitset_list = list_of_bitsets
 
     time.sleep(3)
-    mega_mvb_dict = dic_of_bitsets_to_bitrange(bitset_list, bitsetdf)
+    mega_mvb_dict = dic_of_all_bitsets_to_bitrange(bitset_list, bit_df)
     print(f'{len(mega_mvb_dict)} variables with corresponding bitsets added.')
     time.sleep(1)
-    # file_out = 'mvb_list.dic'
+    # file_out = 'mvb_list.ben'
     try:
         with open(file_out, 'w') as fout:
             fout.write(str(mega_mvb_dict).replace(', nan: nan', ''))
@@ -407,8 +422,18 @@ def abort_protocol():
     quit()
 
 
+def plot_bitset_data():
+    pass
+
+
 def get_bitset_value(cell, bit):
-    return int(f'{int(cell):016b}'[bit])
+    """
+    Returns the bit associated with the
+    """
+    try:
+        return int(f'{int(cell):016b}'[bit])
+    except IndexError:
+        return 0
 
 
 def ASDO_Formation_OK(cell):
@@ -507,7 +532,8 @@ def print_group():
     2.  Inspect a single variable
     3.  Plot all variables to png
     4.  Create an Excel friendly version
-    5.  Update the MVB list with a new version 
+    5.  Plot the available bitsets
+    6.  Update the MVB list with a new version 
         [Defaults to V2.34]
         """)
 
@@ -548,6 +574,8 @@ def main():
         elif choice == 4:
             create_excel_format()
         elif choice == 5:
+            plot_bitset_data()
+        elif choice == 6:
             update_mvb_dictionary(list_of_bitsets, make_bitset_df())
         else:
             print('No selection made. Aborting.')
