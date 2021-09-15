@@ -9,6 +9,9 @@ from datetime import datetime, timedelta
 global_file_name = str()
 start_date = datetime
 global_df = pd.DataFrame()
+list_of_bitsets = []
+mvb_dictionary = {}
+folder_name = 'Timon_Plots'
 
 
 def set_timon_log_filename():
@@ -34,11 +37,12 @@ def read_and_clean_timon_log():
     Reads in the data from the pre selected timon log file. Some minor character changes made to help with
     data types later on down the track.
     Pre-condition: global_file_name contains a file name.
-    Return: pd.DataFrame object
+
+    :return: pd.DataFrame() object
     """
     global global_file_name
     df = pd.read_csv(global_file_name, sep=';')
-    df.replace(',','.', regex=True, inplace=True)
+    df.replace(',', '.', regex=True, inplace=True)
     df['TIME'] = df['TIME'].astype('float64')
     convert_bitsets_to_int()
     return df
@@ -58,9 +62,30 @@ def set_start_date_var():
     print(f'Set start_date var to: {start_date}')
 
 
-def get_mvb_list():
+def set_mvb_dictionary():
     """
-    Prompts the user to identify the MVB list of type xlsx.
+    Looks for a file in the working directory called 'mvb_list.dic'. Failing that the
+    function will prompt the user to continue to search for a file locally.
+    Once located, the global dictionary is updated with the contents of the file.
+    """
+    global mvb_dictionary
+    global list_of_bitsets
+    try:
+        mvb_dictionary = eval(open('mvb_list.dic', 'r').read())
+    except FileNotFoundError:
+        print('MVB List not present in working directory.')
+        choice = input('Do you wish to create one? [Y to continue]')
+        if choice in 'YyYESYesyes':
+            update_mvb_dictionary(list_of_bitsets, make_bitset_df())
+        else:
+            abort_protocol()
+
+
+def user_defined_mvb_list():
+    """
+    Prompts the user to identify an updated MVB list of type xlsx.
+
+    :return: str
     """
     root = tk.Tk()
     root.withdraw()
@@ -114,35 +139,64 @@ def convert_bitsets_to_int():
             global_df[col] = global_df[col].apply(int, base=16)
 
 
-def add_bitset_sub_columns(df):
-    if 'ASDO_StsW(Bitset16)' in df.columns:
-        df['ASDO_Formation_OK'] = df['ASDO_StsW(Bitset16)'].apply(lambda x: ASDO_Formation_OK(x))
-    if 'PLC_EVR_BS1(Bitset8)' in df.columns:
-        df['PLCNullSpeed'] = df['PLC_EVR_BS1(Bitset8)'].apply(lambda x: PLCNullSpeed(x))
-        df['PLC_InauFinished'] = df['PLC_EVR_BS1(Bitset8)'].apply(lambda x: PLC_InauFinished(x))
-        df['ASDO_Overrided'] = df['PLC_EVR_BS1(Bitset8)'].apply(lambda x: ASDO_Overrided(x))
-        df['TimeSync'] = df['PLC_EVR_BS1(Bitset8)'].apply(lambda x: TimeSync(x))
-    if 'HMI_SCREEN(Unsigned8)' in df.columns:
-        df['Degraded_Mode'] = df['HMI_SCREEN(Unsigned8)'].apply(lambda x: degraded(x))
-    if 'PLC_PIS_CMD1(Bitset8)' in df.columns:
-        df['LocoConnected'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: LocoConnected(x))
-        df['Power_Off'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: Power_Off(x))
-        df['ZeroSpeed'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: ZeroSpeed(x))
-        df['DoorSideA'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: DoorSideA(x))
-        df['DoorSideB'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: DoorSideB(x))
+def add_bitset_sub_columns(df, mega_mvb_dic, bitset):
+    """
+
+
+    :return: pd.DataFrame() object
+    """
+    if bitset in df.columns:
+        for bitset_sub_col in mega_mvb_dic[bitset]:
+            bit = mega_mvb_dic[bitset][bitset_sub_col]
+            df[bitset_sub_col] = df[mega_mvb_dic[bitset]].apply(lambda x: get_bitset_value(x, bit))
+    else:
+        print('Something went terribly wrong. Perhaps the mvb_list.dic is empty.')
+        abort_protocol()
+
+    # if 'ASDO_StsW(Bitset16)' in df.columns:
+    #     df['ASDO_Formation_OK'] = df['ASDO_StsW(Bitset16)'].apply(lambda x: ASDO_Formation_OK(x))
+    # if 'PLC_EVR_BS1(Bitset8)' in df.columns:
+    #     df['PLCNullSpeed'] = df['PLC_EVR_BS1(Bitset8)'].apply(lambda x: PLCNullSpeed(x))
+    #     df['PLC_InauFinished'] = df['PLC_EVR_BS1(Bitset8)'].apply(lambda x: PLC_InauFinished(x))
+    #     df['ASDO_Overrided'] = df['PLC_EVR_BS1(Bitset8)'].apply(lambda x: ASDO_Overrided(x))
+    #     df['TimeSync'] = df['PLC_EVR_BS1(Bitset8)'].apply(lambda x: TimeSync(x))
+    # if 'HMI_SCREEN(Unsigned8)' in df.columns:
+    #     df['Degraded_Mode'] = df['HMI_SCREEN(Unsigned8)'].apply(lambda x: degraded(x))
+    # if 'PLC_PIS_CMD1(Bitset8)' in df.columns:
+    #     df['LocoConnected'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: LocoConnected(x))
+    #     df['Power_Off'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: Power_Off(x))
+    #     df['ZeroSpeed'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: ZeroSpeed(x))
+    #     df['DoorSideA'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: DoorSideA(x))
+    #     df['DoorSideB'] = df['PLC_PIS_CMD1(Bitset8)'].apply(lambda x: DoorSideB(x))
     return df
 
 
-def save_individual_plots_to_png(list_of_cols, df, remove_time_columns=True, folder_name='Timon_Plots'):
+def make_local_plots_directory():
     """
-    Takes a list and a data frame and makes a bunch of plots for each of the individual variables.
-    Removes time/date columns from the list by default.
-    Iterates over the columns to
+    Creates a folder in the
     """
+    global folder_name
     try:
         os.mkdir(folder_name)
     except FileExistsError:
-        print(f'Directory {folder_name} exists')
+        print(f'Directory {folder_name} exists, you may overwrite data.')
+        time.sleep(3)
+        os.system('cls')
+    except PermissionError:
+        print('You are running this script in a folder that wont allow you to write to it.')
+        abort_protocol()
+
+
+def save_individual_plots_to_png(list_of_cols, df, remove_time_columns=True):
+    """
+    Takes a list and a data frame and makes a bunch of plots for each of the individual variables.
+    Removes time/date columns from the list by default.
+    Iterates over the columns to find the variables to be displayed.
+    """
+    global folder_name
+
+    if not os.path.exists(folder_name):
+        make_local_plots_directory()
 
     if remove_time_columns:
         for col in list_of_cols:
@@ -180,8 +234,14 @@ def save_individual_plots_to_png(list_of_cols, df, remove_time_columns=True, fol
 
 def lifeword_plot(df: pd.DataFrame, file_name: str, lifeword: str):
     """
-    Magic code to be removed.
+    Uses a keyword to search through the data and find a bunch of variables
+    that fit that criteria.
+    Plots the data do a folder in the local directory.
     """
+    global folder_name
+    if not os.path.exists(folder_name):
+        make_local_plots_directory()
+
     lw_search_list = lifeword.split('-')
     lw_list = []
     for search_word in lw_search_list:
@@ -196,7 +256,34 @@ def lifeword_plot(df: pd.DataFrame, file_name: str, lifeword: str):
     plt.show()
 
 
-def single_variable(df):
+def plot_a_single_variable(df, get_choices=True, col=None):
+    """
+    Spits out a list of variables from the main Pandas Data Frame containing
+    all of the TiMon log data. This is list of the headings from the data frame
+    and one of these variables can be used for interrogation.
+    The user is be prompted to enter one of these variables to inspect.
+    """
+    global folder_name
+    if not os.path.exists(folder_name):
+        make_local_plots_directory()
+
+    if get_choices:
+        os.system('cls')
+        for col in df.columns:
+            print(col)
+        col = input('\nType a variable to inspect: ')
+
+    try:
+        df[col].plot(figsize=(16, 8), legend=True, xlabel='Time Date', title=col)
+        plt.savefig(f'{folder_name}/{col}.png', dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
+                    format=None, transparent=False, pad_inches=0.1)
+        plt.show()
+    except ValueError:
+        print(f'{col} does not exist. Typo?')
+        abort_protocol()
+
+
+def inspect_a_single_variable(df):
     """
     Spits out a list of variables from the main Pandas Data Frame containing
     all of the TiMon log data. This is list of the headings from the data frame
@@ -207,13 +294,14 @@ def single_variable(df):
     for col in df.columns:
         print(col)
 
-    choice = input('\nType a variable to inspect: ')
+    col = input('\nType a variable to inspect: ')
+
     try:
-        df[choice].plot(figsize=(16, 8), legend=True, xlabel='Time Date', title=choice)
+        df[col].plot(figsize=(16, 8), legend=True, xlabel='Time Date', title=col)
         plt.show()
-    except:
-        print(f'{choice} does not exist, aborting. Typo?')
-        time.sleep(3)
+    except KeyError:
+        print(f'{col} does not exist. Typo?')
+        abort_protocol()
 
 
 def make_bitset_df():
@@ -221,8 +309,11 @@ def make_bitset_df():
     Creates and returns a Pandas Data Frame with the bitset data.
     This will call the get_mvb_list function which will prompt the user
     to identify an appropriate MVB list of type xlsx.
+
+    :return: pd.DataFrame() object
     """
-    mvb_list = get_mvb_list()
+    global bitsetdf
+    mvb_list = user_defined_mvb_list()
     cols = ['VarId', 'VarType', 'Comment0', 'Comment1']
     bitsetdf = pd.read_excel(mvb_list, sheet_name='Variables', header=0, usecols=cols)
     bitsetdf['VarId'].ffill(inplace=True)
@@ -234,7 +325,90 @@ def make_bitset_df():
     # Delete these row indexes from dataFrame
     bitsetdf.drop(indexNames, inplace=True)
     bitsetdf.reset_index(inplace=True)
+
     return bitsetdf
+
+
+def map_bitrange_to_value(bitset_variable, bitsetdf):
+    """
+    Maps the bitset range of bits to the associated variable name. i.e. {0:'Bit Id'}
+
+    :return: dictionary
+    """
+    bitset_dic = {}
+    for row_num in bitsetdf.loc[bitsetdf['VarId'] == bitset_variable, 'Comment0'].index:
+        bitset_dic[bitsetdf.loc[bitsetdf.index[row_num], 'Comment1']] = bitsetdf.loc[bitsetdf.index[row_num], 'Comment0']
+    return bitset_dic
+
+
+def set_list_of_bitsets(bitsetdf):
+    """
+    Returns the unique id set of bitsets.
+    """
+    global list_of_bitsets
+    list_of_bitsets = bitsetdf['VarId'].unique()
+
+
+def dic_of_bitsets_to_bitrange(bitset_list, bitsetdf):
+    """
+    Maps the bitset dictionary to a Var ID. i.e. {Var ID: {0:'Bit Id', 1:'Bit Id'}}
+
+    :return: dictionary
+    """
+    mvb_dict = {}
+    for bitset in bitset_list:
+        mvb_dict[bitset] = map_bitrange_to_value(bitset, bitsetdf)
+    return mvb_dict
+
+
+def update_mvb_dictionary(bitset_list, bitsetdf):
+    """
+    Requests the user to input a new list of MVB data from a file of type xlsx.
+    """
+    global list_of_bitsets
+    root = tk.Tk()
+    root.withdraw()
+    file_out = filedialog.asksaveasfilename(defaultextension='.dic',
+                                            title='Update MVB list', filetypes=[('dic files', '*.dic')],
+                                            initialfile='mvb_list.dic')
+    root.destroy()
+    print('Please wait. This may take a minute or two...')
+
+    if not bitset_list:
+        set_list_of_bitsets(bitsetdf)
+        bitset_list = list_of_bitsets
+
+    time.sleep(3)
+    mega_mvb_dict = dic_of_bitsets_to_bitrange(bitset_list, bitsetdf)
+    print(f'{len(mega_mvb_dict)} variables with corresponding bitsets added.')
+    time.sleep(1)
+    # file_out = 'mvb_list.dic'
+    try:
+        with open(file_out, 'w') as fout:
+            fout.write(str(mega_mvb_dict).replace(', nan: nan', ''))
+    except (FileExistsError, PermissionError):
+        print(f'Failed to overwrite file {file_out}.')
+        abort_protocol()
+
+    print('SUCCESS!')
+    set_mvb_dictionary()
+
+
+def abort_protocol():
+    print("""
+        _     ____    ___   ____   _____  ___  _   _   ____
+       / \   | __ )  / _ \ |  _ \ |_   _||_ _|| \ | | / ___|
+      / _ \  |  _ \ | | | || |_) |  | |   | | |  \| || |  _
+     / ___ \ | |_) || |_| ||  _ <   | |   | | | |\  || |_| |
+    /_/   \_\|____/  \___/ |_| \_\  |_|  |___||_| \_| \____|
+
+    """)
+    time.sleep(3)
+    quit()
+
+
+def get_bitset_value(cell, bit):
+    return int(f'{int(cell):016b}'[bit])
 
 
 def ASDO_Formation_OK(cell):
@@ -329,15 +503,12 @@ def print_group():
     | |  | ||  __/| | | || |_| |
     |_|  |_| \___||_| |_| \__,_|
     
-    1.  Look at FDS data
-    2.  Look at GWE data
-    3.  Look at HMI data
-    4.  Look at Doors and ASDO
-    5.  Look at PLC Variables
-    6.  Look at EVR data
-    7.  Inspect a single variable
-    8.  Plot all variables to png
-    9.  Create an Excel friendly version
+    1.  Look at data using a keyword search
+    2.  Inspect a single variable
+    3.  Plot all variables to png
+    4.  Create an Excel friendly version
+    5.  Update the MVB list with a new version 
+        [Defaults to V2.34]
         """)
 
 
@@ -347,29 +518,43 @@ def setup_dataframe():
     set_global_df(read_and_clean_timon_log())
     create_datetime_column()
     convert_bitsets_to_int()
-    set_global_df(add_bitset_sub_columns(global_df))
+    set_global_df(global_df)
 
 
 def main():
     global global_df
     global global_file_name
+    global list_of_bitsets
     setup_dataframe()
     print_group()
 
-    lifeword_list = {1: 'FDS', 2: 'GWE', 3: 'HMI', 4: 'DO1-DO2-ASDO', 5: 'PLC', 6: 'EVR'}
-    choice = int(input('Select an option: '))
-    if choice < 7:
-        lifeword_plot(global_df, global_file_name, lifeword_list[choice])
-    elif choice == 7:
-        single_variable(global_df)
-    elif choice == 8:
-        current_list_of_cols = list(global_df.columns)
-        save_individual_plots_to_png(list_of_cols=current_list_of_cols, df=global_df)
-    elif choice == 9:
-        create_excel_format()
-    else:
-        print('No selection made. Aborting.')
-        time.sleep(3)
+    try:
+        choice = int(input('Select an option: '))
+        if choice == 1:
+            os.system('cls')
+            print("""
+            Input a search word to look for in the timon log.
+            Here's a few suggestions: FDS, GWE, HMI, PLC, ASDO, EVR, DO1, DO2
+            If you want to add a few options at once, separate the values using the dash -
+            eg. DO1-DO2-ASDO
+            """)
+            search_term = input('Input a search term here: ')
+            lifeword_plot(global_df, global_file_name, search_term)
+        elif choice == 2:
+            plot_a_single_variable(global_df)
+        elif choice == 3:
+            current_list_of_cols = list(global_df.columns)
+            save_individual_plots_to_png(list_of_cols=current_list_of_cols, df=global_df)
+        elif choice == 4:
+            create_excel_format()
+        elif choice == 5:
+            update_mvb_dictionary(list_of_bitsets, make_bitset_df())
+        else:
+            print('No selection made. Aborting.')
+            time.sleep(3)
+    except ValueError:
+        print('Poor selection choice.')
+        abort_protocol()
 
     os.system('cls')
     print("""
@@ -394,6 +579,9 @@ def main():
              \  \       \ |     | /        /
               \  \       \       /
 
+
+
+  ** Ben McGuffog 2021
     """)
     time.sleep(3)
 
