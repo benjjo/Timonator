@@ -4,7 +4,6 @@ from tkinter import filedialog
 import pandas as pd
 import matplotlib.pyplot as plt
 import time
-from tqdm import tqdm
 from datetime import datetime, timedelta
 global_file_name = str()
 start_date = datetime
@@ -57,7 +56,9 @@ def set_start_date_var():
     start of recording) to make a time date index.
     """
     global start_date
-    date_list = [int(i) for i in global_file_name.split('.')[0].split('_')]
+    global global_file_name
+    file_name = global_file_name.split('/')[-1]
+    date_list = [int(i) for i in file_name.split('.')[0].split('_')]
     start_date = datetime(date_list[0], date_list[1], date_list[2], date_list[3], date_list[4], date_list[5])
     print(f'Set start_date var to: {start_date}')
 
@@ -155,8 +156,7 @@ def add_bitset_sub_columns(df, mega_mvb_dic, bitset):
                 print('\n :::: ' + df[bitset_sub_col] + ' ::::\n')
                 df[bitset_sub_col] = df[mega_mvb_dic[bitset]].apply(lambda x: get_bitset_value(x, bit))
 
-
-            df[bitset].plot(figsize=(16, 4), legend=True, ylim=(0, 1), linewidth=4)
+            df[bitset].plot(figsize=(16, 4), legend=True, ylim=(0, 1), linewidth=2)
             plt.savefig(f'{folder_name}/{bitset}.png', dpi=300, facecolor='w', edgecolor='w',
                         orientation='landscape', format=None, transparent=False, pad_inches=0.1)
     else:
@@ -201,14 +201,14 @@ def save_individual_plots_to_png(list_of_cols, df, remove_time_columns=True):
                 print(f'removing {col}')
                 list_of_cols.remove(col)
 
-    for col in tqdm(list_of_cols):
+    for col in list_of_cols:
         if col == 'PLC_MASTER_COACH(Unsigned16)':
             df[col].plot(figsize=(16, 4), legend=True, ylim=(15001, 15011), linewidth=5)
             plt.savefig(f'{folder_name}/{col}.png', dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
                         format=None, transparent=False, pad_inches=0.1)
             plt.close()
         elif 'Boolean' in col:
-            df[col].plot(figsize=(16, 4), legend=True, ylim=(0, 1), linewidth=4)
+            df[col].plot(figsize=(16, 4), legend=True, ylim=(0, 1), linewidth=2)
             plt.savefig(f'{folder_name}/{col}.png', dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
                         format=None, transparent=False, pad_inches=0.1)
             plt.close()
@@ -216,7 +216,7 @@ def save_individual_plots_to_png(list_of_cols, df, remove_time_columns=True):
             plot_bitsets(df, mvb_dictionary, col)
             plt.close()
         elif 'Enum2' in col:
-            df[col].plot(figsize=(16, 4), legend=True, ylim=(0, 3), linewidth=4)
+            df[col].plot(figsize=(16, 4), legend=True, ylim=(0, 3), linewidth=2)
             plt.savefig(f'{folder_name}/{col}.png', dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
                         format=None, transparent=False, pad_inches=0.1)
             plt.close()
@@ -234,11 +234,11 @@ def plot_bitsets(df, mvb_dic, key):
     sub_key = key.split('(')[0]
     if sub_key in mvb_dic and key in str(df.columns):
         for col in mvb_dic[sub_key]:
-            new_col = f'{sub_key}_{col}'
-            df[new_col] = df[key].apply(lambda x: get_bitset_value(x, mvb_dic[sub_key][col]))
-            df[new_col].plot(figsize=(16, 4), legend=True, ylim=(0, 1), linewidth=4)
             if 'reserve' not in col:
                 counter = 0
+                new_col = f'{sub_key}_{col}'
+                df[new_col] = df[key].apply(lambda x: get_bitset_value(x, mvb_dic[sub_key][col]))
+                df[new_col].plot(figsize=(16, 4), legend=True, ylim=(0, 1), linewidth=2)
                 while os.path.exists(f'{folder_name}\\{new_col}'):
                     col = f'{new_col}{str(counter)}'
                     counter += 1
@@ -327,7 +327,8 @@ def make_bitset_df():
 
     :return: pd.DataFrame() object
     """
-    global bitsetdf
+    global global_df
+    bitsetdf = global_df.copy()
     mvb_list = user_defined_mvb_list()
     cols = ['VarId', 'VarType', 'Comment0', 'Comment1']
     bitsetdf = pd.read_excel(mvb_list, sheet_name='Variables', header=0, usecols=cols)
@@ -422,16 +423,35 @@ def abort_protocol():
     quit()
 
 
-def plot_bitset_data():
-    pass
-
-
-def get_bitset_value(cell, bit):
+def plot_bitset_data(list_of_cols, df, remove_time_columns=True):
     """
-    Returns the bit associated with the
+    Plots the bitset data.
+    """
+    global folder_name
+    global mvb_dictionary
+    set_mvb_dictionary()
+
+    if not os.path.exists(folder_name):
+        make_local_plots_directory()
+
+    if remove_time_columns:
+        for col in list_of_cols:
+            if 'TIME' in col:
+                print(f'removing {col}')
+                list_of_cols.remove(col)
+    print('Populating Timon_Plots folder. This may take some time with big files.')
+    for col in list_of_cols:
+        if 'Bitset' in col and col.split('(')[0] in mvb_dictionary:
+            plot_bitsets(df, mvb_dictionary, col)
+            plt.close()
+
+
+def get_bitset_value(cell_value, bit):
+    """
+    Returns the bit value associated with the variable.
     """
     try:
-        return int(f'{int(cell):016b}'[bit])
+        return int(f'{int(cell_value):016b}'[::-1][bit])
     except IndexError:
         return 0
 
@@ -574,7 +594,8 @@ def main():
         elif choice == 4:
             create_excel_format()
         elif choice == 5:
-            plot_bitset_data()
+            current_list_of_cols = list(global_df.columns)
+            plot_bitset_data(list_of_cols=current_list_of_cols, df=global_df)
         elif choice == 6:
             update_mvb_dictionary(list_of_bitsets, make_bitset_df())
         else:
