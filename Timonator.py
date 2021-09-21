@@ -450,10 +450,7 @@ def get_bitset_value(cell_value, bit):
     """
     Returns the bit value associated with the variable.
     """
-    try:
-        return int(f'{int(cell_value):016b}'[::-1][bit])
-    except IndexError:
-        return 0
+    return int(bin(cell_value >> bit & 0b1), 2)
 
 
 def ASDO_Formation_OK(cell):
