@@ -111,6 +111,9 @@ def create_datetime_column():
         global_df['Time Date'] = global_df['TIME'].apply(lambda x: start_date + timedelta(seconds=x))
         global_df = global_df.set_index(['Time Date'])
 
+    # Remove the duplicated index data, otherwise it will come back to bite us when we want to reference a cell.
+    global_df = global_df[~global_df.index.duplicated(keep='first')]
+
 
 def create_excel_format():
     """
@@ -156,7 +159,7 @@ def add_bitset_sub_columns(df, mega_mvb_dic, bitset):
                 print('\n :::: ' + df[bitset_sub_col] + ' ::::\n')
                 df[bitset_sub_col] = df[mega_mvb_dic[bitset]].apply(lambda x: get_bitset_value(x, bit))
 
-            df[bitset].plot(figsize=(16, 4), legend=True, ylim=(0, 1), linewidth=2)
+            df[bitset].plot(figsize=(16, 4), legend=True, linewidth=2)
             plt.savefig(f'{folder_name}/{bitset}.png', dpi=300, facecolor='w', edgecolor='w',
                         orientation='landscape', format=None, transparent=False, pad_inches=0.1)
     else:
@@ -196,10 +199,22 @@ def save_individual_plots_to_png(list_of_cols, df, remove_time_columns=True):
         make_local_plots_directory()
 
     if remove_time_columns:
+        print('Removing columns that are used to make the index (x-axis).')
         for col in list_of_cols:
             if 'TIME' in col:
-                print(f'removing {col}')
+                print(f'removing {col} from plot set.')
                 list_of_cols.remove(col)
+
+    if 'HMI_SCREEN(Unsigned8)' in list_of_cols:
+        print('Processing HMI Screen states.')
+        df = HMI_Screen_populate(df)
+        print('Adding HMI Screen state data to Plot set.')
+
+    # Drop all the columns with 0
+    # df = df.loc[:, (df != 0).any(axis=0)]
+    list_of_cols = df.columns
+    print('Processing data. This can take a while.')
+    print('Keep an eye on the Timon_Plots folder if you are worried.')
 
     for col in list_of_cols:
         if col == 'PLC_MASTER_COACH(Unsigned16)':
@@ -208,15 +223,17 @@ def save_individual_plots_to_png(list_of_cols, df, remove_time_columns=True):
                         format=None, transparent=False, pad_inches=0.1)
             plt.close()
         elif 'Boolean' in col:
-            df[col].plot(figsize=(16, 4), legend=True, ylim=(0, 1), linewidth=2)
+            df[col].plot(figsize=(16, 4), legend=True, linewidth=1)
             plt.savefig(f'{folder_name}/{col}.png', dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
                         format=None, transparent=False, pad_inches=0.1)
             plt.close()
         elif 'Bitset' in col and col.split('(')[0] in mvb_dictionary:
-            plot_bitsets(df, mvb_dictionary, col)
+            print(f'Processing {str(col)}. Please sit and chill.')
+            plot_a_set_of_bitsets(df, mvb_dictionary, col)
+            print(f'Completed: {str(col)}')
             plt.close()
         elif 'Enum2' in col:
-            df[col].plot(figsize=(16, 4), legend=True, ylim=(0, 3), linewidth=2)
+            df[col].plot(figsize=(16, 4), legend=True, ylim=(0, 3), linewidth=1)
             plt.savefig(f'{folder_name}/{col}.png', dpi=300, facecolor='w', edgecolor='w', orientation='landscape',
                         format=None, transparent=False, pad_inches=0.1)
             plt.close()
@@ -229,7 +246,10 @@ def save_individual_plots_to_png(list_of_cols, df, remove_time_columns=True):
             plt.close()
 
 
-def plot_bitsets(df, mvb_dic, key):
+def plot_a_set_of_bitsets(df, mvb_dic, key):
+    """
+    Plots the array of bitsets as individual plots for the key (value-id).
+    """
     global folder_name
     sub_key = key.split('(')[0]
     if sub_key in mvb_dic and key in str(df.columns):
@@ -237,8 +257,8 @@ def plot_bitsets(df, mvb_dic, key):
             if 'reserve' not in col:
                 counter = 0
                 new_col = f'{sub_key}_{col}'
-                df[new_col] = df[key].apply(lambda x: get_bitset_value(x, mvb_dic[sub_key][col]))
-                df[new_col].plot(figsize=(16, 4), legend=True, ylim=(0, 1), linewidth=2)
+                df[new_col] = df[key].apply(lambda x: get_bitset_value(x, mvb_dic[sub_key][col])).copy()
+                df[new_col].plot(figsize=(16, 4), legend=True, linewidth=2)
                 while os.path.exists(f'{folder_name}\\{new_col}'):
                     col = f'{new_col}{str(counter)}'
                     counter += 1
@@ -442,98 +462,52 @@ def plot_bitset_data(list_of_cols, df, remove_time_columns=True):
     print('Populating Timon_Plots folder. This may take some time with big files.')
     for col in list_of_cols:
         if 'Bitset' in col and col.split('(')[0] in mvb_dictionary:
-            plot_bitsets(df, mvb_dictionary, col)
+            plot_a_set_of_bitsets(df, mvb_dictionary, col)
             plt.close()
 
 
 def get_bitset_value(cell_value, bit):
     """
     Returns the bit value associated with the variable.
+    Shifts the bit to be examined into the LSB column and performs a logical AND on that bit.
+
+    :return: int 1 or 0
     """
     return int(bin(cell_value >> bit & 0b1), 2)
 
 
-def ASDO_Formation_OK(cell):
-    """
-    Converts cell into binary bits. Returns the selected bit related to ASDO Formation data.
-    """
-    return int(f'{int(cell):016b}'[-1])
+def HMI_Screen_populate(df):
+    HMI_Screen_dic = {1: 'Train Formation Confirmation screen',
+                      2: 'Train Formation screen',
+                      3: 'Controls screen',
+                      4: 'HVAC screen',
+                      5: 'Lighting screen',
+                      6: 'Toilets screen',
+                      7: 'CCTV screen',
+                      8: 'Alarms screen',
+                      9: 'Brake Status screen',
+                      20: 'Password screen  (Maintenance)',
+                      21: 'Alarms screen (Maintenance)',
+                      22: 'Controls screen (Maintenance)',
+                      23: 'HVAC screen (Maintenance)',
+                      24: 'Lighting screen (Maintenance)',
+                      25: 'Buses communications screen (Maintenance)',
+                      26: 'Groups screen',
+                      27: 'Log fault screen (Maintenance)',
+                      28: 'Versions screen (Maintenance)',
+                      100: 'Degraded mode screen'}
+    for col in HMI_Screen_dic.values():
+        df[col] = 0
 
+    for cell_index in df.index.values:
+        try:
+            cell_value = int(df.loc[cell_index, 'HMI_SCREEN(Unsigned8)'])
+            if cell_value in HMI_Screen_dic.keys():
+                df.loc[cell_index, HMI_Screen_dic[cell_value]] = 1
+        except IndexError:
+            print(f'Bad index at: {str(cell_index)}')
 
-def PLCNullSpeed(cell):
-    """
-    Converts cell into binary bits. Returns the selected bit related to inauguration data.
-    """
-    return int(f'{int(cell):08b}'[0])
-
-
-def PLC_InauFinished(cell):
-    """
-    Converts cell into binary bits. Returns the selected bit related to inauguration data.
-    """
-    return int(f'{int(cell):08b}'[4])
-
-
-def ASDO_Overrided(cell):
-    """
-    Converts cell into binary bits. Returns the selected bit related to inauguration data.
-    """
-    return int(f'{int(cell):08b}'[6])
-
-
-def TimeSync(cell):
-    """
-    Converts cell into binary bits. Returns the selected bit related to inauguration data.
-    """
-    return int(f'{int(cell):08b}'[7])
-
-
-def degraded(cell):
-    if cell == 100:
-        return 1
-    return 0
-
-
-def LocoConnected(cell):
-    """
-    Converts cell into binary bits. Returns the selected bit related to loco data.
-    """
-    return int(f'{int(cell):08b}'[0])
-
-
-def ClosedFormation(cell):
-    """
-    Converts cell into binary bits. Returns the selected bit related to closed formation data.
-    """
-    return int(f'{int(cell):08b}'[1])
-
-
-def Power_Off(cell):
-    """
-    Converts cell into binary bits. Returns the selected bit related to closed formation data.
-    """
-    return int(f'{int(cell):08b}'[3])
-
-
-def ZeroSpeed(cell):
-    """
-    Converts cell into binary bits. Returns the selected bit related to closed formation data.
-    """
-    return int(f'{int(cell):08b}'[5])
-
-
-def DoorSideA(cell):
-    """
-    Converts cell into binary bits. Returns the selected bit related to Door side A data.
-    """
-    return int(f'{int(cell):08b}'[6])
-
-
-def DoorSideB(cell):
-    """
-    Converts cell into binary bits. Returns the selected bit related to Door side B data.
-    """
-    return int(f'{int(cell):08b}'[7])
+    return df
 
 
 def print_group():
