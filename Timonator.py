@@ -249,6 +249,7 @@ def save_individual_plots_to_png(list_of_cols, df, remove_time_columns=True):
 def plot_a_set_of_bitsets(df, mvb_dic, key):
     """
     Plots the array of bitsets as individual plots for the key (value-id).
+    Need to continue to troubleshoot performance on the bitset function.
     """
     global folder_name
     sub_key = key.split('(')[0]
