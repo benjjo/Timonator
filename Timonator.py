@@ -257,7 +257,7 @@ def plot_a_set_of_bitsets(df, mvb_dic, key):
             if 'reserve' not in col:
                 counter = 0
                 new_col = f'{sub_key}_{col}'
-                df[new_col] = df[key].apply(lambda x: get_bitset_value(x, mvb_dic[sub_key][col])).copy()
+                df[new_col] = df[key].copy().apply(lambda x: get_bitset_value(x, mvb_dic[sub_key][col]))
                 df[new_col].plot(figsize=(16, 4), legend=True, linewidth=2)
                 while os.path.exists(f'{folder_name}\\{new_col}'):
                     col = f'{new_col}{str(counter)}'
